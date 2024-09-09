@@ -1,14 +1,4 @@
 <?php
-/*
-  Descrição do Desafio:
-    Você precisa realizar uma migração dos dados fictícios que estão na pasta <dados_sistema_legado> para a base da clínica fictícia MedicalChallenge.
-    Para isso, você precisa:
-      1. Instalar o MariaDB na sua máquina. Dica: Você pode utilizar Docker para isso;
-      2. Restaurar o banco da clínica fictícia Medical Challenge: arquivo <medical_challenge_schema>;
-      3. Migrar os dados do sistema legado fictício que estão na pasta <dados_sistema_legado>:
-        a) Dica: você pode criar uma função para importar os arquivos do formato CSV para uma tabela em um banco temporário no seu MariaDB.
-      4. Gerar um dump dos dados já migrados para o banco da clínica fictícia Medical Challenge.
-*/
 
 // Importação de Bibliotecas:
 include "./lib.php";
@@ -29,16 +19,31 @@ function mapSexo($sexo_pac){
   return $map[$sexo_pac] ?? "Outro";
 }
 
+function getLastId($conn, $table) {
+  $sql = "SELECT MAX(id) AS last_id FROM $table";
+  $result = mysqli_query($conn, $sql);
+  if ($result) {
+      $row = mysqli_fetch_assoc($result);
+      return ($row['last_id'] ?? 0) + 1;
+  } else {
+      die("Erro ao buscar o último ID na tabela $table: " . mysqli_error($conn) . "\n");
+  }
+}
+
+$host = 'localhost';
+$username = 'root';
+$password = '36217900';
+$database = 'medicalchallenge';
+$backupDir = 'D:\Usuario\Desktop\Programaçao\php\desafio';
+
 // Conexão com o banco da clínica fictícia:
-$connMedical = mysqli_connect("localhost", "root", "36217900", "medicalchallenge")
+$connMedical = mysqli_connect($host, $username, $password, $password)
   or die("Não foi possível conectar os servidor MySQL: medicalchallenge\n");
 
   mysqli_set_charset($connMedical, 'utf8mb4');
 
-
 // Informações de Inicio da Migração:
 echo "Início da Migração: " . dateNow() . ".\n\n";
-
 
 $arquivo = fopen("20210512_pacientes.csv", "r");
 if ($arquivo === false) {
@@ -54,23 +59,14 @@ if ($header === false) {
 //Convenio
 while ($row = fgetcsv($arquivo, 1000, ";")) {
 
-  $sqlByUltID = "SELECT MAX(id) AS last_id FROM convenios";
-  $result = mysqli_query($connMedical, $sqlByUltID);
-
-  if ($result) {
-      $rowSql = mysqli_fetch_assoc($result);
-      $lastId = $rowSql['last_id'] ?? 0;
-      $newId = $lastId + 1;
-  } else {
-      die("Erro ao buscar o último ID: " . mysqli_error($connMedical) . "\n");
-  }
+  $newId = getLastId($connMedical, "convenios");
 
   $data = array_combine($header, $row);
  
   $nome_convenio = empty($data["convenio"]) ? "" : $data["convenio"]; 
 
-   $sqlByNome = "SELECT nome FROM convenios WHERE nome = '$nome_convenio'";
-   $resultSqlByNome = mysqli_query($connMedical, $sqlByNome);
+  $sqlByNome = "SELECT nome FROM convenios WHERE nome = '$nome_convenio'";
+  $resultSqlByNome = mysqli_query($connMedical, $sqlByNome);
 
   if (mysqli_num_rows($resultSqlByNome) >0) {
     echo "Convênio '$nome_convenio' encontrado no banco de dados.\n";    
@@ -83,17 +79,17 @@ while ($row = fgetcsv($arquivo, 1000, ";")) {
 
   if ($stmtConvenio === false) {
     die("Erro ao preparar a consulta SQL: " . mysqli_error($connMedical) . "\n");
-}
+  }
 
-mysqli_stmt_bind_param($stmtConvenio, 'is', $newId, $nome_convenio);
+  mysqli_stmt_bind_param($stmtConvenio, 'is', $newId, $nome_convenio);
 
-if (mysqli_stmt_execute($stmtConvenio)) {
-  echo "Registro inserido na tabela convenios com sucesso!!.\n";    
-} else{
-  echo "Erro ao inserir dados na tabela convenio: " . mysqli_stmt_error($stmtConvenio) . "\n";
-}
+  if (mysqli_stmt_execute($stmtConvenio)) {
+    echo "Registro inserido na tabela convenios com sucesso!!.\n";    
+  } else{
+    echo "Erro ao inserir dados na tabela convenio: " . mysqli_stmt_error($stmtConvenio) . "\n";
+  }
 
-mysqli_stmt_close($stmtConvenio);
+  mysqli_stmt_close($stmtConvenio);
 
 }
 
@@ -109,16 +105,7 @@ $header = fgetcsv($arquivo1, 1000, ";");
 //Pacientes
 while ($row = fgetcsv($arquivo1, 1000, ";")) {
 
-  $sqlByUltID = "SELECT MAX(id) AS last_id FROM pacientes";
-  $result = mysqli_query($connMedical, $sqlByUltID);
-
-  if ($result) {
-      $rowSql = mysqli_fetch_assoc($result);
-      $lastId = $rowSql['last_id'] ?? 0;
-      $newId = $lastId + 1;
-  } else {
-      die("Erro ao buscar o último ID: " . mysqli_error($connMedical) . "\n");
-  }
+  $newId = getLastId($connMedical, "pacientes");
 
   $data = array_combine($header, $row);
   
@@ -134,16 +121,12 @@ while ($row = fgetcsv($arquivo1, 1000, ";")) {
     echo "Paciente com código 0, pulando...\n";
     continue;
   }
-
-  echo "Nome do convenio $nome_convenio: ";
+  
   $sqlByNome = "SELECT id FROM convenios WHERE nome = '$nome_convenio'";
   $resultSqlByIdConv = mysqli_query($connMedical, $sqlByNome);
   $result2 = mysqli_fetch_assoc($resultSqlByIdConv);
   $id_convenioSql = $result2['id'] ?? 0;
-
-  print_r($id_convenioSql);
-
-  // Inserir os dados na tabela do banco de dados
+  
   $sqlInsertPaciente = "INSERT INTO pacientes (id, nome, nascimento, cpf, rg, sexo, id_convenio, cod_referencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
   $stmtPaciente = mysqli_prepare($connMedical, $sqlInsertPaciente);
 
@@ -177,16 +160,7 @@ $header = fgetcsv($arquivo2, 1000, ";");
 //Profissionais
 while ($row = fgetcsv($arquivo2, 1000, ";")) {
   
-  $sqlByUltID = "SELECT MAX(id) AS last_id FROM profissionais";
-  $result = mysqli_query($connMedical, $sqlByUltID);
-
-  if ($result) {
-      $rowSql = mysqli_fetch_assoc($result);
-      $lastId = $rowSql['last_id'] ?? 0;
-      $newId = $lastId + 1;
-  } else {
-      die("Erro ao buscar o último ID: " . mysqli_error($connMedical) . "\n");
-  }
+  $newId = getLastId($connMedical, "profissionais");
 
   $data = array_combine($header, $row);
 
@@ -232,16 +206,7 @@ $header = fgetcsv($arquivo3, 1000, ";");
 //Procedimentos
 while ($row = fgetcsv($arquivo3, 1000, ";")) {
 
-  $sqlByUltID = "SELECT MAX(id) AS last_id FROM procedimentos";
-  $result = mysqli_query($connMedical, $sqlByUltID);
-
-  if ($result) {
-      $rowSql = mysqli_fetch_assoc($result);
-      $lastId = $rowSql['last_id'] ?? 0;
-      $newId = $lastId + 1;
-  } else {
-      die("Erro ao buscar o último ID: " . mysqli_error($connMedical) . "\n");
-  }
+  $newId = getLastId($connMedical, "procedimentos");
 
   $data = array_combine($header, $row);
 
@@ -250,28 +215,28 @@ while ($row = fgetcsv($arquivo3, 1000, ";")) {
   $sqlByNome = "SELECT nome FROM procedimentos WHERE nome = '$nome_procedimento'";
   $resultSqlByNome = mysqli_query($connMedical, $sqlByNome);
 
- if (mysqli_num_rows($resultSqlByNome) >0) {
+  if (mysqli_num_rows($resultSqlByNome) >0) {
    echo "nome_procedimento '$nome_procedimento' encontrado no banco de dados.\n";    
    continue;
- }
+  }
 
- $sqlInsertProcedimento = "INSERT INTO procedimentos (id, nome) VALUES (?, ?)";
+  $sqlInsertProcedimento = "INSERT INTO procedimentos (id, nome) VALUES (?, ?)";
 
- $stmtProcedimento = mysqli_prepare($connMedical, $sqlInsertProcedimento);
+  $stmtProcedimento = mysqli_prepare($connMedical, $sqlInsertProcedimento);
 
- if ($stmtProcedimento === false) {
-   die("Erro ao preparar a consulta SQL: " . mysqli_error($connMedical) . "\n");
-}
+  if ($stmtProcedimento === false) {
+    die("Erro ao preparar a consulta SQL: " . mysqli_error($connMedical) . "\n");
+  }
 
-mysqli_stmt_bind_param($stmtProcedimento, 'is', $newId, $nome_Procedimento);
+  mysqli_stmt_bind_param($stmtProcedimento, 'is', $newId, $nome_Procedimento);
 
-if (mysqli_stmt_execute($stmtProcedimento)) {
- echo "Registro inserido na tabela Profissional com sucesso!!.\n";    
-} else{
- echo "Erro ao inserir dados na tabela Profissional: " . mysqli_stmt_error($stmtProcedimento) . "\n";
-}
+  if (mysqli_stmt_execute($stmtProcedimento)) {
+  echo "Registro inserido na tabela Profissional com sucesso!!.\n";    
+  } else{
+  echo "Erro ao inserir dados na tabela Profissional: " . mysqli_stmt_error($stmtProcedimento) . "\n";
+  }
 
-mysqli_stmt_close($stmtProcedimento);
+  mysqli_stmt_close($stmtProcedimento);
 
 }
 
@@ -287,16 +252,7 @@ $header = fgetcsv($arquivo4, 1000, ";");
 //Agendamentos
 while ($row = fgetcsv($arquivo4, 1000, ";")) {
 
-  $sqlByUltID = "SELECT MAX(id) AS last_id FROM agendamentos";
-  $result = mysqli_query($connMedical, $sqlByUltID);
-
-  if ($result) {
-      $rowSql = mysqli_fetch_assoc($result);
-      $lastId = $rowSql['last_id'] ?? 0;
-      $newId = $lastId + 1;
-  } else {
-      die("Erro ao buscar o último ID: " . mysqli_error($connMedical) . "\n");
-  }
+  $newId = getLastId($connMedical, "agendamentos");
 
   $data = array_combine($header, $row);
  
@@ -313,8 +269,7 @@ while ($row = fgetcsv($arquivo4, 1000, ";")) {
   $dh_inicio = $dia . ' ' . $hora_incio;
   $dh_fim = $dia . ' ' . $hora_fim;
   
-  if($cod_agendamento === 0){
-    echo "Agendamento com código 0, pulando...\n";
+  if($cod_agendamento === 0){    
     continue;
   }
 
@@ -337,8 +292,7 @@ while ($row = fgetcsv($arquivo4, 1000, ";")) {
   $resultSqlByIdProc = mysqli_query($connMedical, $sqlByIdProcedimento);
   $resultProcedimento = mysqli_fetch_assoc($resultSqlByIdProc);
   $id_ProcedimentoSql = $resultProcedimento['id'] ?? 0;
-
-  // Inserir os dados na tabela do banco de dados
+  
   $sqlInsertProcedimento = "INSERT INTO agendamentos (id, id_paciente, id_profissional, dh_inicio, dh_fim, id_convenio, id_procedimento, observacoes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
   $stmtProcedimento = mysqli_prepare($connMedical, $sqlInsertProcedimento);
 
@@ -363,7 +317,40 @@ while ($row = fgetcsv($arquivo4, 1000, ";")) {
 // Encerrando as conexões:
 $connMedical->close();
 fclose($arquivo);
+fclose($arquivo1);
+fclose($arquivo2);
+fclose($arquivo3);
+fclose($arquivo4);
 //$connTemp->close();
+
+function backupDatabase($host, $username, $password, $database, $backupDir)
+{    
+    $backupFile = $backupDir . DIRECTORY_SEPARATOR . $database . '_' . date('Y-m-d_H-i-s') . '.sql';
+
+ 
+    $command = sprintf(
+        '"C:\\Program Files\\MariaDB 11.5\\bin\\mariadb-dump.exe" --host=%s --user=%s --password=%s %s > "%s"',
+        escapeshellarg($host),
+        escapeshellarg($username),
+        escapeshellarg($password),
+        escapeshellarg($database),
+        $backupFile
+    );
+    
+    $output = null;
+    $status = null;
+    exec($command, $output, $status);
+
+    if ($status === 0) {
+        echo "Backup do banco de dados '$database' realizado com sucesso em: $backupFile\n";
+        return true;
+    } else {
+        echo "Erro ao realizar backup do banco de dados '$database'.\n";
+        return false;
+    }
+}
+
+backupDatabase($host, $username, $password, $database, $backupDir);
 
 // Informações de Fim da Migração:
 echo "Fim da Migração: " . dateNow() . ".\n";
